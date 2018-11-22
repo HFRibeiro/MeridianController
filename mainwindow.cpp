@@ -1,6 +1,11 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
+#include "math.h"
+#include <QtMath>
+
+const double PI  = 3.141592653589793238463;
+
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -36,6 +41,8 @@ MainWindow::MainWindow(QWidget *parent) :
        ui->cb_serial->addItem(port.portName());
     }
 
+    ui->cb_serial->setCurrentIndex(1);
+
     ui->lb_server_state->setText("TCP Server waiting for connection...");
     loading_blue = new QMovie(":/loading_blue.gif");
     loading_blue->start();
@@ -54,7 +61,18 @@ MainWindow::~MainWindow()
 
 void MainWindow::readData()
 {
-    if(serial->canReadLine()) qDebug() << serial->readLine();
+   QString read = serial->readLine();
+   if(read.contains("conv.Intpusels in steps is:"))
+   {
+        QString tmp = read.replace("conv.Intpusels in steps is:","");
+        ui->lb_int_pulse->setText(tmp);
+   }
+   else if(read.contains("Puselsis:"))
+   {
+        QString tmp = read.replace("Puselsis:","");
+        ui->lb_pulse->setText(tmp);
+   }
+   else if(read!="\n") ui->pl_recieved_serial_port->appendPlainText(read);
 }
 
 void MainWindow::handleError(QSerialPort::SerialPortError error)
@@ -76,8 +94,8 @@ void MainWindow::writeData(const QByteArray &data)
 void MainWindow::openSerialPort(QString port_name, int baudrate)
 {
     qDebug() << "Opening :" << port_name;
-    serial->setPortName(port_name);
-    serial->setBaudRate(baudrate);
+    serial->setPortName("/dev/ttyUSB0");
+    serial->setBaudRate(QSerialPort::Baud115200);
     serial->setDataBits(QSerialPort::Data8);
     serial->setParity(QSerialPort::NoParity);
     serial->setStopBits( QSerialPort::OneStop);
@@ -117,8 +135,9 @@ void MainWindow::acceptConnection()
 void MainWindow::startRead()
 {
     QByteArray buffer = client->read(client->bytesAvailable());
+    qDebug() <<"Recieved from Stellarium: " << buffer;
     work_data(buffer);
-    qDebug() << buffer;
+
 }
 
 void MainWindow::work_data(QByteArray data)
@@ -130,27 +149,80 @@ void MainWindow::work_data(QByteArray data)
 
     //compute ra and dec
 
+    qDebug() << "ra:" << ra;
+
+    qDebug() << "dec:" << dec;
+
 
     //0x80000000 = 2147483648 equals 12 hours
 
-    float raf  = 12 * (float)ra  / 2147483648.0f;
-    raf = (raf < 0)? 24.0f + raf: raf;
+    double raf  = (double)12 * (double)ra  / (double)2147483648;
+    qDebug() <<"RAF: "<< raf;
+    //raf = ((double)raf < (double)0)? (double)24.0 + (double)raf: (double)raf;
     // 0x40000000 = 1073741824 equals 90 degrees
 
-    //double decf = 90 * (double)dec / 1073741824.0f; descomentar isto se não der
+    double decf = (double)90 * (double)dec / (double)1073741824; //descomentar isto se não der
+    //decf = decf*(double)PI/(double)180;
 
-    float decf = (float)dec ;
-    //compute altitude angle, the input for motor drive controller
-    //note: 0 deg = N, 90 deg = zenith, 180 deg = S, thus we have:
+    qDebug() <<"decf: "<< decf;
 
-    float angle = 90 - decf + LATITUDE;
 
-    //write angle as ASCII byte array with carriage return to serial port
+    double LAT_rad = qDegreesToRadians(LATITUDE);
 
-    QString valueToSend = QString::number(angle) + "\r";
+    double decf_rad = qDegreesToRadians(decf);
+
+    double ALT_rad_sin = sin(decf_rad)*sin(LAT_rad);
+
+    double ALT = 0;
+
+    if(norte){
+
+        ALT_rad_sin = ALT_rad_sin - cos(decf_rad)*cos(LAT_rad);
+        double ALT_rad = asin(ALT_rad_sin);
+
+
+        ALT = qRadiansToDegrees(ALT_rad);
+
+         qDebug() << ALT;
+
+        ALT = ALT / (double)2 +(double)ui->sp_angle->value();
+
+        qDebug() << ALT;
+    }
+    else
+    {
+        ALT_rad_sin = ALT_rad_sin + cos(decf_rad)*cos(LAT_rad);
+        double ALT_rad = asin(ALT_rad_sin);
+
+
+        ALT = qRadiansToDegrees(ALT_rad);
+
+        qDebug() << ALT;
+
+        ALT = ALT / (double)2;
+
+        ALT = (double)180 - (double)ALT; // Ajuste para referencial local
+
+        ALT = ALT +(double)ui->sp_angle->value();
+
+
+
+        qDebug() << ALT;
+    }
+
+    QString valueToSend = QString::number(ALT) + "\r";
     qDebug() << "Sending: " << valueToSend;
 
     writeData(valueToSend.toLocal8Bit());
+
+
+
+
+
+    //QString valueToSend = QString::number(angle) + "\r";
+    //qDebug() << "Sending: " << valueToSend;
+
+    //writeData(valueToSend.toLocal8Bit());
 
 
      // print some debug info
@@ -183,7 +255,8 @@ void MainWindow::on_bt_close_clicked()
 
 void MainWindow::on_bt_send_clicked()
 {
-    writeData(ui->tb_send->text().toLocal8Bit());
+    writeData(ui->tb_send->text().toLocal8Bit()+'\r');
+    qDebug() << "Sending: " << ui->tb_send->text().toLocal8Bit()+'\r';
 }
 
 void MainWindow::disconnected()
@@ -191,4 +264,22 @@ void MainWindow::disconnected()
     qDebug() << "TCP Client Disconnected";
     ui->lb_server_state->setText("TCP Client Disconnected, waiting connection...");
     ui->lb_loading->setMovie(loading_blue);
+}
+
+void MainWindow::on_bt_DTR_clicked()
+{
+    if (serial->isOpen()){
+        serial->setDataTerminalReady(false);
+        serial->setDataTerminalReady(true);
+    }
+}
+
+void MainWindow::on_rb_Sul_clicked(bool checked)
+{
+    if(checked) norte = false;
+}
+
+void MainWindow::on_rB_norte_clicked(bool checked)
+{
+    if(checked) norte = true;
 }

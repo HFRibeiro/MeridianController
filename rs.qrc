@@ -2,6 +2,6 @@
     <qresource prefix="/">
         <file>loading_blue.gif</file>
         <file>loading_green.gif</file>
-        <file>meridian.jpg</file>
+        <file>meridian.png</file>
     </qresource>
 </RCC>

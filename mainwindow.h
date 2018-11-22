@@ -52,14 +52,21 @@ private slots:
 
     void disconnected();
 
+    void on_bt_DTR_clicked();
+
+    void on_rb_Sul_clicked(bool checked);
+
+    void on_rB_norte_clicked(bool checked);
+
 private:
     Ui::MainWindow *ui;
     QTcpServer server;
     QTcpSocket* client;
     QSerialPort *serial;
     quint16 port = 6666;
-    float LATITUDE = 41.108329f;
+    float LATITUDE = 41.108329;
     QMovie *loading_blue, *loading_green;
+    bool norte = false;
 };
 
 #endif // MAINWINDOW_H
