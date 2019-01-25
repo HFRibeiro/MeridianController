@@ -94,7 +94,7 @@ void MainWindow::writeData(const QByteArray &data)
 void MainWindow::openSerialPort(QString port_name, int baudrate)
 {
     qDebug() << "Opening :" << port_name;
-    serial->setPortName("/dev/ttyUSB0");
+    serial->setPortName(port_name);
     serial->setBaudRate(QSerialPort::Baud115200);
     serial->setDataBits(QSerialPort::Data8);
     serial->setParity(QSerialPort::NoParity);
